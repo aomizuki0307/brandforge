@@ -1,0 +1,23 @@
+# BrandForge — Backblaze Generative Media Hackathon
+# Pinned loosely for the 2-week build; lock before submission.
+
+# Genblaze SDK: core + B2/S3 storage, with GMI Cloud provider extra.
+genblaze[gmicloud]>=0.2.4
+
+# Generative fallback + captions
+openai>=2.0.0
+anthropic>=0.40.0
+
+# Web app
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+jinja2>=3.1.0
+
+# Config / models
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# Dev / test
+pytest>=8.0.0
+pytest-cov>=5.0.0
