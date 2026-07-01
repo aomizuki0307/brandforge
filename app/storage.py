@@ -9,8 +9,10 @@ Keys are hierarchical so a bucket listing reads like a catalog:
     brandforge/<run>/...            generated assets + manifests (Genblaze sink)
     brandkits/<id>/v<version>.json  Brand Kit revisions (this module)
 
-Public delivery URLs are produced via ``URLPolicy.PUBLIC`` so a public bucket
-serves the gallery directly; flip ``public=False`` for presigned URLs instead.
+Delivery URLs use ``URLPolicy.PUBLIC`` only when a public base URL is configured
+(``BRANDFORGE_PUBLIC_BASE_URL``); for our private bucket that base is unset, so
+delivery falls back to ``URLPolicy.AUTO`` (presigned URLs). Pass ``public=False``
+to force ``AUTO`` even when a public base is configured.
 """
 
 from __future__ import annotations
@@ -38,10 +40,18 @@ def _public_base(settings: Settings) -> str | None:
     return settings.public_base_url
 
 
-def _resolve_policy(backend: object, public: bool) -> URLPolicy:
-    """Use PUBLIC only when the backend actually exposes a public base URL;
-    otherwise AUTO, so a private/unconfigured bucket never raises."""
-    if public and getattr(backend, "public_url_base", None):
+def _resolve_policy(settings: Settings, public: bool) -> URLPolicy:
+    """Pick a delivery URL policy from app config.
+
+    ``URLPolicy.PUBLIC`` is used only when a public delivery base is actually
+    configured (``BRANDFORGE_PUBLIC_BASE_URL``); otherwise ``URLPolicy.AUTO``,
+    which yields presigned URLs for our private bucket. Deciding from our own
+    config — rather than probing backend internals — keeps the SDK's PUBLIC
+    fail-loud contract intact: if a public base is set but the backend can't
+    honour it, ``get_url`` raises ``URLPolicyError`` instead of silently
+    downgrading.
+    """
+    if public and _public_base(settings):
         return URLPolicy.PUBLIC
     return URLPolicy.AUTO
 
@@ -78,7 +88,7 @@ def make_sink(
         backend,
         prefix=prefix,
         key_strategy=KeyStrategy.HIERARCHICAL,
-        asset_url_policy=_resolve_policy(backend, public),
+        asset_url_policy=_resolve_policy(settings, public),
     )
 
 
@@ -103,7 +113,7 @@ def save_brand_kit(
     key = brand_kit_key(brand)
     payload = brand.model_dump_json(indent=2).encode("utf-8")
     backend.put(key, payload, content_type="application/json")
-    return backend.get_url(key, policy=_resolve_policy(backend, public))
+    return backend.get_url(key, policy=_resolve_policy(settings, public))
 
 
 def load_brand_kit(
@@ -128,4 +138,4 @@ def public_url(
 ) -> str:
     """Return a delivery URL for a stored object (public when available)."""
     backend = backend or make_backend(settings)
-    return backend.get_url(key, policy=_resolve_policy(backend, public=True))
+    return backend.get_url(key, policy=_resolve_policy(settings, public=True))

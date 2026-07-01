@@ -16,10 +16,14 @@ from __future__ import annotations
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 from genblaze_core.models import Manifest, Modality as GenModality, Run
-from genblaze_core.pipeline import Pipeline
+from genblaze_core.pipeline import Pipeline, PipelineResult
+from genblaze_core.providers.base import BaseProvider
+from genblaze_core.sinks.base import BaseSink
+from genblaze_core.storage import StorageBackend
 from genblaze_openai import DalleProvider
 from genblaze_gmicloud import GMICloudImageProvider
 
@@ -46,11 +50,14 @@ class PipelineError(RuntimeError):
     or a step failed)."""
 
 
+Provider = Literal["openai", "gmicloud"]
+
+
 @dataclass(frozen=True)
 class ProviderChoice:
     """A resolved (provider instance, model id, display name) triple."""
 
-    provider: object
+    provider: BaseProvider
     model: str
     name: str
 
@@ -64,7 +71,7 @@ class GenerationResult:
     run: Run
 
 
-def _order(prefer: str) -> tuple[str, ...]:
+def _order(prefer: Provider) -> tuple[Provider, ...]:
     return ("gmicloud", "openai") if prefer == "gmicloud" else ("openai", "gmicloud")
 
 
@@ -80,12 +87,14 @@ def _gen_output_dir() -> str:
     return str(path)
 
 
-def pick_image_provider(settings: Settings, *, prefer: str = "openai") -> ProviderChoice:
+def pick_image_provider(settings: Settings, *, prefer: Provider = "openai") -> ProviderChoice:
     """Resolve an image provider, honouring ``prefer`` then falling back.
 
     OpenAI is the default because GMI free credits are still pending; the GMI
     branch is wired but only selected when ``prefer="gmicloud"`` and a key is set.
     """
+    if prefer not in ("openai", "gmicloud"):
+        raise PipelineError(f"Unknown provider preference: {prefer!r}")
     output_dir = _gen_output_dir()
     for name in _order(prefer):
         if name == "openai" and settings.has_openai:
@@ -134,30 +143,34 @@ def build_image_pipeline(
     return pipe
 
 
-def _key_from_url(url: str, backend: object | None = None) -> str:
+def _key_from_url(url: str, backend: StorageBackend | None = None) -> str:
     """Best-effort storage key from an asset URL.
 
     Uses the backend's own parser when available, otherwise falls back to the
-    URL path (sufficient for display/traceability).
+    URL path (sufficient for display/traceability). ``key_from_url`` returns
+    ``None`` for URLs it doesn't own, so we must fall through in that case
+    rather than stringify ``None`` into the key.
     """
     parser = getattr(backend, "key_from_url", None)
     if callable(parser):
         try:
-            return str(parser(url))
+            key = parser(url)
         except Exception:  # pragma: no cover - defensive, fall through to parse
-            pass
+            key = None
+        if key is not None:
+            return str(key)
     return urlparse(url).path.lstrip("/")
 
 
 def map_result_to_assets(
-    result,
+    result: PipelineResult,
     brand: BrandKit,
     campaign: Campaign,
     choice: ProviderChoice,
     created_at: str,
     *,
     modality: AssetModality = "image",
-    backend: object | None = None,
+    backend: StorageBackend | None = None,
 ) -> list[Asset]:
     """Flatten a Genblaze run into our ``Asset`` schema with full provenance."""
     manifest_uri = result.manifest.manifest_uri
@@ -190,22 +203,30 @@ def generate_images(
     campaign: Campaign,
     *,
     created_at: str,
-    sink,
+    sink: BaseSink | None,
     choice: ProviderChoice | None = None,
-    backend: object | None = None,
+    backend: StorageBackend | None = None,
     image_size: str = DEFAULT_IMAGE_SIZE,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> GenerationResult:
     """Generate a campaign's image set, store it via ``sink``, and map results.
 
     Raises ``PipelineError`` if any step fails so callers never persist a
-    partially-successful campaign as if it were complete.
+    partially-successful campaign as if it were complete. Note that a failed
+    multi-variant run may already have uploaded its successful variants and a
+    manifest to B2, so the error carries the ``run_id``/``manifest_uri`` needed
+    to locate and reap them.
     """
     choice = choice or pick_image_provider(settings)
     pipe = build_image_pipeline(brand, campaign, choice, image_size=image_size)
-    result = pipe.run(sink=sink, timeout=timeout)
+    # raise_on_failure=False keeps our explicit failed_steps() check authoritative
+    # and pins today's behaviour against the genblaze-core 0.4.0 default flip.
+    result = pipe.run(sink=sink, timeout=timeout, raise_on_failure=False)
     if result.failed_steps():
-        raise PipelineError(result.error_summary() or "image generation failed")
+        detail = result.error_summary() or "image generation failed"
+        raise PipelineError(
+            f"{detail} [run_id={result.run.run_id} manifest={result.manifest.manifest_uri}]"
+        )
     assets = map_result_to_assets(
         result, brand, campaign, choice, created_at, modality="image", backend=backend
     )

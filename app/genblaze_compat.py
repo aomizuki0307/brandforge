@@ -26,13 +26,26 @@ from genblaze_core.storage import transfer as _transfer
 _PATCHED_FLAG = "_brandforge_win_file_url_patched"
 
 
-def _read_local_file(url: str, *, extra_roots: list[Path] | None = None):
+def _is_absolute(raw: str) -> bool:
+    """True for a Windows drive path, a UNC path, or a POSIX absolute path."""
+    if raw.startswith(("/", "\\")):
+        return True
+    return len(raw) >= 2 and raw[1] == ":"
+
+
+def _read_local_file(
+    url: str, *, extra_roots: list[Path] | None = None
+) -> tuple[bytes, str | None]:
     """Windows-safe re-implementation of ``transfer._read_local_file``."""
     parsed = urlparse(url)
     raw = unquote((parsed.netloc or "") + (parsed.path or ""))
     # "/C:/x" -> "C:/x" (POSIX-style file:///C:/... form)
     if len(raw) >= 3 and raw[0] == "/" and raw[2] == ":":
         raw = raw[1:]
+    # Reject non-absolute paths rather than let Path.resolve() fall back to CWD
+    # (the original resolved from parsed.path only and never had this ambiguity).
+    if not _is_absolute(raw):
+        raise _transfer.StorageError(f"Malformed file:// URL, not absolute: {url!r}")
     resolved = Path(raw).resolve()
 
     allowed = list(_transfer.ALLOWED_FILE_ROOTS)
@@ -54,10 +67,18 @@ def _read_local_file(url: str, *, extra_roots: list[Path] | None = None):
 
 
 def apply() -> None:
-    """Install the shim once. No-op on non-Windows platforms."""
+    """Install the shim once. No-op on non-Windows platforms.
+
+    Guards on the target existing so that if a future genblaze release renames
+    or removes the private ``_read_local_file``, we skip patching instead of
+    silently creating a dead attribute (which would let the Windows bug return
+    unnoticed).
+    """
     if os.name != "nt":
         return
     if getattr(_transfer, _PATCHED_FLAG, False):
+        return
+    if not hasattr(_transfer, "_read_local_file"):  # pragma: no cover - upstream drift guard
         return
     _transfer._read_local_file = _read_local_file
     setattr(_transfer, _PATCHED_FLAG, True)

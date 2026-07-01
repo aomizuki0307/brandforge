@@ -5,10 +5,11 @@ import pytest
 from app import storage
 from app.config import Settings
 from app.models import BrandKit
-from genblaze_core.storage import ObjectStorageSink
+from app.storage import _resolve_policy
+from genblaze_core.storage import ObjectStorageSink, URLPolicy
 
 
-def _settings() -> Settings:
+def _settings(public_base: str | None = None) -> Settings:
     return Settings(
         b2_key_id="k",
         b2_app_key="a",
@@ -17,17 +18,16 @@ def _settings() -> Settings:
         gmicloud_api_key=None,
         openai_api_key="sk-test",
         anthropic_api_key=None,
-        public_base_url=None,
+        public_base_url=public_base,
     )
 
 
 class FakeBackend:
     """Minimal stand-in for S3StorageBackend used by the storage layer."""
 
-    def __init__(self, public_url_base="https://cdn.example"):
+    def __init__(self):
         self.put_calls = []
         self.store = {}
-        self.public_url_base = public_url_base
 
     def put(self, key, data, *, content_type=None, **_):
         self.put_calls.append((key, data, content_type))
@@ -47,7 +47,22 @@ def test_brand_kit_key_is_versioned():
     assert storage.brand_kit_key(kit) == "brandkits/acme/v3.json"
 
 
-@pytest.mark.integration
+@pytest.mark.unit
+def test_resolve_policy_auto_when_no_public_base():
+    assert _resolve_policy(_settings(public_base=None), public=True) is URLPolicy.AUTO
+
+
+@pytest.mark.unit
+def test_resolve_policy_public_when_base_configured():
+    assert _resolve_policy(_settings(public_base="https://cdn"), public=True) is URLPolicy.PUBLIC
+
+
+@pytest.mark.unit
+def test_resolve_policy_auto_when_public_false():
+    assert _resolve_policy(_settings(public_base="https://cdn"), public=False) is URLPolicy.AUTO
+
+
+@pytest.mark.unit
 def test_save_brand_kit_puts_versioned_json_and_returns_url():
     backend = FakeBackend()
     kit = BrandKit(id="acme", name="Acme", version=2, tone_words=["bold"])
@@ -61,7 +76,7 @@ def test_save_brand_kit_puts_versioned_json_and_returns_url():
     assert url.startswith("https://cdn.example/brandkits/acme/v2.json")
 
 
-@pytest.mark.integration
+@pytest.mark.unit
 def test_load_brand_kit_roundtrips():
     backend = FakeBackend()
     kit = BrandKit(id="acme", name="Acme", version=2, tone_words=["bold"], style_prompt="flat")
@@ -72,7 +87,7 @@ def test_load_brand_kit_roundtrips():
     assert loaded == kit
 
 
-@pytest.mark.integration
+@pytest.mark.unit
 def test_make_sink_returns_object_storage_sink():
     backend = FakeBackend()
     sink = storage.make_sink(_settings(), backend=backend)
