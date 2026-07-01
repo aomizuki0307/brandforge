@@ -1,8 +1,9 @@
 # BrandForge — Backblaze Generative Media Hackathon
 # Pinned loosely for the 2-week build; lock before submission.
 
-# Genblaze SDK: core + B2/S3 storage, with GMI Cloud provider extra.
-genblaze[gmicloud]>=0.2.4
+# Genblaze SDK: core + B2/S3 storage, with GMI Cloud + OpenAI provider extras.
+# OpenAI-first for now (GMI credits pending); GMI kept for the video chain later.
+genblaze[gmicloud,openai]>=0.4.1
 
 # Generative fallback + captions
 openai>=2.0.0
