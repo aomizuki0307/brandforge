@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}BrandForge — gallery{% endblock %}
+
+{% block content %}
+<section class="bento">
+  <!-- Brand Kit -->
+  <article class="panel panel--kit" aria-labelledby="kit-h">
+    <div class="panel__eyebrow">01 · Identity</div>
+    <h2 id="kit-h" class="panel__title">Brand&nbsp;Kit</h2>
+    <p class="panel__lede">Save a reusable identity. Every asset records the exact revision it came from.</p>
+    <form id="kit-form" class="form" autocomplete="off">
+      <div class="field">
+        <label for="kit-id">ID <span class="hint">a–z 0–9 _ -</span></label>
+        <input id="kit-id" name="id" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="acme" />
+      </div>
+      <div class="field">
+        <label for="kit-name">Name</label>
+        <input id="kit-name" name="name" required placeholder="Acme Co." />
+      </div>
+      <div class="field">
+        <label for="kit-tone">Tone words <span class="hint">comma-separated</span></label>
+        <input id="kit-tone" name="tone_words" placeholder="clean, bold, warm" />
+      </div>
+      <div class="field">
+        <label for="kit-palette">Palette <span class="hint">hex, comma-separated</span></label>
+        <input id="kit-palette" name="palette" placeholder="#0f172a, #38bdf8, #f8fafc" />
+      </div>
+      <div class="field">
+        <label for="kit-style">Style prompt</label>
+        <input id="kit-style" name="style_prompt" placeholder="flat vector, soft gradients, whitespace" />
+      </div>
+      <div class="field">
+        <label for="kit-audience">Audience</label>
+        <input id="kit-audience" name="audience" placeholder="indie software makers" />
+      </div>
+      <button class="btn btn--ghost" type="submit">Save Brand Kit</button>
+      <p class="form__status" data-status="kit" role="status" aria-live="polite"></p>
+    </form>
+  </article>
+
+  <!-- Generate -->
+  <article class="panel panel--gen" aria-labelledby="gen-h">
+    <div class="panel__eyebrow">02 · Generate</div>
+    <h2 id="gen-h" class="panel__title">Run a campaign</h2>
+    <p class="panel__lede">One theme → a cohesive variant set under a single manifest. <span class="warn">Live generation is billable.</span></p>
+    <form id="gen-form" class="form">
+      <div class="field">
+        <label for="gen-brand">Brand Kit ID</label>
+        <input id="gen-brand" name="brand_kit_id" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="acme" />
+      </div>
+      <div class="field">
+        <label for="gen-camp">Campaign ID</label>
+        <input id="gen-camp" name="campaign_id" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="launch-1" />
+      </div>
+      <div class="field">
+        <label for="gen-theme">Theme</label>
+        <input id="gen-theme" name="theme" required maxlength="500" placeholder="summer product launch" />
+      </div>
+      <div class="field field--inline">
+        <label for="gen-n">Variants</label>
+        <input id="gen-n" name="num_variants" type="number" min="1" max="8" value="3" />
+      </div>
+      <button class="btn btn--solid" type="submit">Generate set</button>
+      <p class="form__status" data-status="gen" role="status" aria-live="polite"></p>
+    </form>
+  </article>
+
+  <!-- Gallery -->
+  <section class="panel panel--gallery" aria-labelledby="gal-h">
+    <div class="gallery-head">
+      <div>
+        <div class="panel__eyebrow">03 · Catalog</div>
+        <h2 id="gal-h" class="panel__title">Gallery</h2>
+      </div>
+      <form class="filter" method="get" action="/">
+        <input class="filter__input" name="brand_kit_id" value="{{ filter_brand_kit_id }}" placeholder="brand id" pattern="[A-Za-z0-9_-]*" />
+        <input class="filter__input" name="campaign_id" value="{{ filter_campaign_id }}" placeholder="campaign id (replay)" pattern="[A-Za-z0-9_-]*" />
+        <button class="btn btn--mini" type="submit">Filter</button>
+        {% if filter_brand_kit_id or filter_campaign_id %}
+        <a class="btn btn--mini btn--clear" href="/">Clear</a>
+        {% endif %}
+      </form>
+    </div>
+
+    {% if assets %}
+    <div class="grid">
+      {% for a in assets %}
+      <figure class="card">
+        <div class="card__frame">
+          {% if a.modality == "image" %}
+          <img class="card__img" src="{{ a.url }}" alt="Generated variant {{ a.id }}" width="512" height="512" loading="lazy" />
+          {% else %}
+          <div class="card__placeholder">{{ a.modality }}</div>
+          {% endif %}
+          <span class="card__badge">{{ a.modality }}</span>
+        </div>
+        <figcaption class="card__meta">
+          <div class="card__row"><span class="k">campaign</span><a class="v v--link" href="/?campaign_id={{ a.campaign_id }}" title="Replay this campaign">{{ a.campaign_id }}</a></div>
+          <div class="card__row"><span class="k">brand</span><span class="v">{{ a.brand_kit_id }} · v{{ a.brand_kit_version }}</span></div>
+          <div class="card__row"><span class="k">model</span><span class="v">{{ a.model }}</span></div>
+          {% if a.sha256 %}<div class="card__row"><span class="k">sha256</span><span class="v v--mono">{{ a.sha256[:12] }}…</span></div>{% endif %}
+          <div class="card__row"><span class="k">created</span><span class="v v--dim">{{ a.created_at }}</span></div>
+        </figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+      <p class="empty__title">Nothing catalogued yet.</p>
+      <p class="empty__sub">Save a Brand Kit, run a campaign, and generated variants land here — queryable by brand or campaign, always with a fresh delivery URL.</p>
+    </div>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/app.js" defer></script>
+{% endblock %}

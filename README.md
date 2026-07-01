@@ -12,10 +12,11 @@ Define a **Brand Kit** once (palette, tone, style prompt fragments, target platf
 ## Status
 
 🚧 In progress. Working: Phase 1 (single image → B2 → verified manifest),
-Phase 2 (multi-variant on-brand image **set**, one manifest per campaign), and
+Phase 2 (multi-variant on-brand image **set**, one manifest per campaign),
 Phase 4 (single **Parquet asset catalog** in B2, auto-updated per campaign and
-queryable for the gallery). Next up: the FastAPI + web gallery layer and the
-short-video chain. See the implementation plan for phases and scope.
+queryable for the gallery), and Phase 6 (**FastAPI + web gallery**, HTTP Basic
+auth, Docker/Render deploy artifacts). Next up: the short-video chain and
+per-platform captions. See the implementation plan for phases and scope.
 
 ## Setup
 
@@ -69,6 +70,46 @@ assets = query_assets(settings, modality="image")              # filter by kind
 ```
 
 Pass `update_index=False` to `run_campaign` to skip the catalog write.
+
+## Run the web app (FastAPI + gallery)
+
+A thin FastAPI layer wraps the same service functions and adds a server-rendered
+gallery. Routes: `POST /brandkits`, `POST /campaigns` (= `run_campaign`),
+`GET /assets` (= `query_assets`, filter by `brand_kit_id` / `campaign_id` /
+`modality`), `GET /` (gallery; pass `?campaign_id=…` to **replay** a past set with
+fresh URLs), and `GET /healthz` (liveness).
+
+```bash
+# App factory — importing the module has no side effects until the server builds it.
+.\.venv\Scripts\python -m uvicorn app.main:create_app --factory --reload
+```
+
+**Access control.** Every route except `/healthz` requires **HTTP Basic auth**.
+Set both `BRANDFORGE_USER` and `BRANDFORGE_PASS` in `.env`; if either is unset,
+protected routes fail **closed** with `503` (never served open). This keeps
+presigned URLs and prompts from leaking to anonymous callers.
+
+```bash
+curl -s localhost:8000/healthz                       # 200, no auth
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8000/assets   # 401
+curl -s -u "$BRANDFORGE_USER:$BRANDFORGE_PASS" localhost:8000/assets   # 200
+```
+
+## Deploy (Render, free tier)
+
+Container-based deploy artifacts are included: `Dockerfile`, `render.yaml`, a
+pinned `requirements.lock`, and `.dockerignore`.
+
+1. Push this repo to GitHub.
+2. Render → **New +** → **Blueprint**, point it at this repo (`render.yaml`).
+3. Set the secrets in the dashboard (all `sync: false`): `B2_KEY_ID`,
+   `B2_APP_KEY`, `B2_BUCKET`, `B2_REGION`, `OPENAI_API_KEY`, `BRANDFORGE_USER`,
+   `BRANDFORGE_PASS` (and optional `BRANDFORGE_PUBLIC_BASE_URL`).
+4. Health check path is `/healthz`.
+
+> The free plan sleeps after inactivity, so the first request after idle takes a
+> cold start (~30–60s). Build the image locally to verify:
+> `docker build -t brandforge . && docker run --rm -p 8000:8000 --env-file .env brandforge`.
 
 ### Smoke tests (live B2 + OpenAI, billable — not in the pytest suite)
 

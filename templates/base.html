@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>{% block title %}BrandForge{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="site-head">
+    <a class="wordmark" href="/">
+      <span class="wordmark__mark">◆</span>
+      <span class="wordmark__name">BrandForge</span>
+    </a>
+    <p class="site-head__tag">On-brand social media, generated &amp; catalogued on Backblaze&nbsp;B2.</p>
+  </header>
+
+  <main class="shell">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-foot">
+    <span>BrandForge · Genblaze on B2</span>
+    <span class="site-foot__note">Delivery URLs are short-lived presigned links — don't screenshot them into public posts.</span>
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

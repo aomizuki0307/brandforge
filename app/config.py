@@ -46,6 +46,8 @@ class Settings:
     openai_api_key: str | None
     anthropic_api_key: str | None
     public_base_url: str | None
+    basic_auth_user: str | None = None
+    basic_auth_pass: str | None = None
 
     @property
     def has_gmicloud(self) -> bool:
@@ -58,6 +60,16 @@ class Settings:
     @property
     def has_captions(self) -> bool:
         return bool(self.anthropic_api_key)
+
+    @property
+    def has_auth(self) -> bool:
+        """True only when both HTTP Basic credentials are configured.
+
+        The web layer treats this as its authorization gate: with it False,
+        protected routes fail closed (503) rather than exposing presigned URLs
+        and prompts, so a public deploy is never accidentally open.
+        """
+        return bool(self.basic_auth_user and self.basic_auth_pass)
 
 
 def load_settings() -> Settings:
@@ -76,6 +88,8 @@ def load_settings() -> Settings:
         openai_api_key=_optional("OPENAI_API_KEY"),
         anthropic_api_key=_optional("ANTHROPIC_API_KEY"),
         public_base_url=_optional("BRANDFORGE_PUBLIC_BASE_URL"),
+        basic_auth_user=_optional("BRANDFORGE_USER"),
+        basic_auth_pass=_optional("BRANDFORGE_PASS"),
     )
     if not (settings.has_gmicloud or settings.has_openai):
         raise ConfigError(

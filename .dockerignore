@@ -1,0 +1,38 @@
+# Keep the build context (and image) lean and secret-free.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Secrets — never ship into an image layer.
+.env
+.env.*
+!.env.example
+
+# Not needed at runtime.
+tests/
+examples/
+docs/
+*.md
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# Local generated media / index artifacts.
+output/
+generated/
+manifests/
+*.parquet
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.mp4
+*.mp3
+*.wav
