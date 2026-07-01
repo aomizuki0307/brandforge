@@ -27,7 +27,9 @@ EXPOSE 8000
 
 # Render (and most PaaS) inject $PORT; default to 8000 locally. Use the app
 # factory so import has no side effects until the server builds the app.
-# --proxy-headers + --forwarded-allow-ips='*' make uvicorn trust Render's edge
-# X-Forwarded-For, so per-client rate limiting keys on the real visitor IP
-# rather than lumping every request under Render's internal proxy address.
-CMD ["sh", "-c", "uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
+# NB: we deliberately do NOT pass --forwarded-allow-ips='*'. Trusting the
+# client-supplied X-Forwarded-For would let an attacker rotate that header to
+# dodge the per-IP rate limit, so the limiter instead keys on the (unspoofable)
+# proxy peer address — i.e. it acts as a global service-level cap that bounds
+# billable-endpoint abuse. See the rate-limit note in app/main.py.
+CMD ["sh", "-c", "uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]

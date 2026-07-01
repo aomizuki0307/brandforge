@@ -406,11 +406,12 @@ def test_rate_limit_throttles_and_returns_json_429_with_headers():
     app.dependency_overrides[get_backend] = lambda: FakeBackend()
     client = TestClient(app)
     # Each app gets its own limiter/storage, so this test's counter starts clean.
+    # /brandkits is capped at 60/hour; the 61st request is throttled.
     statuses = [
-        client.post("/brandkits", json=_brand(), auth=AUTH).status_code for _ in range(31)
+        client.post("/brandkits", json=_brand(), auth=AUTH).status_code for _ in range(61)
     ]
-    assert statuses[:30] == [201] * 30  # under the 30/hour limit
-    assert statuses[30] == 429  # the 31st is throttled
+    assert statuses[:60] == [201] * 60  # under the 60/hour limit
+    assert statuses[60] == 429  # the 61st is throttled
     last = client.post("/brandkits", json=_brand(), auth=AUTH)
     assert last.status_code == 429
     assert last.json()["detail"].startswith("Rate limit exceeded")

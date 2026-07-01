@@ -39,16 +39,21 @@ from app.schemas import AssetOut, BrandKitOut, CampaignOut, CampaignRequest
 from app.security import make_auth_dependency
 from app.storage import brand_kit_key, make_backend, save_brand_kit
 
-# Per-client rate limits. The public free-tier deploy has no upstream WAF, so a
+# Rate limits. The public free-tier deploy has no upstream WAF, so a
 # leaked/guessed credential could otherwise loop the billable generation route
-# unbounded; these bound the blast radius. Keyed by client IP (see the
-# ``--proxy-headers`` note in the Dockerfile so the real visitor IP is used, not
-# Render's edge proxy). /healthz is intentionally unlimited so the health probe
-# is never throttled. The Limiter is built per-app in create_app() so each app
-# instance (notably each test) gets isolated counters.
-_LIMIT_CAMPAIGNS = "10/hour"   # billable (OpenAI gpt-image-1) — strictest
-_LIMIT_BRANDKITS = "30/hour"
-_LIMIT_READS = "60/minute"
+# unbounded; these bound the blast radius. The key is the request peer address
+# (``get_remote_address``). We intentionally do NOT trust the client-supplied
+# X-Forwarded-For (no uvicorn ``--forwarded-allow-ips``), because an attacker
+# could rotate that header to get a fresh bucket per request and bypass the
+# limit; behind Render's edge every request therefore shares the proxy peer,
+# making these effectively an UNSPOOFABLE global (service-wide) cap. Read limits
+# are set high enough to leave headroom for concurrent legitimate viewers.
+# /healthz is intentionally unlimited so the health probe is never throttled.
+# The Limiter is built per-app in create_app() so each app instance (notably
+# each test) gets isolated counters.
+_LIMIT_CAMPAIGNS = "20/hour"   # billable (OpenAI gpt-image-1) — hard global ceiling
+_LIMIT_BRANDKITS = "60/hour"
+_LIMIT_READS = "240/minute"
 
 # Locked-down response headers applied to every response (see create_app).
 # Basic-auth credentials are cached per-origin by browsers, so a state-changing
