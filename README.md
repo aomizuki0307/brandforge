@@ -2,21 +2,61 @@
 
 > Brand-consistent SNS media generation pipeline — built on **Genblaze** and **Backblaze B2** for the Backblaze Generative Media Hackathon.
 
-Define a **Brand Kit** once (palette, tone, style prompt fragments, target platforms). For each campaign theme, BrandForge generates a coordinated set of on-brand images plus one short video, tracks every asset with a **SHA-256 provenance manifest**, versions them in **Backblaze B2**, indexes them for search, and serves public delivery URLs — with per-platform captions.
+Define a **Brand Kit** once (palette, tone, style prompt fragments, target platforms). For each campaign theme, BrandForge generates a coordinated set of on-brand images, tracks every asset with a **SHA-256 provenance manifest**, versions everything in **Backblaze B2** under a hierarchical key strategy, folds it into a searchable **Parquet catalog**, and serves it through an authenticated gallery with presigned delivery URLs. (A short-video chain and per-platform captions are built into the codebase; see [Status](#status) and [AI providers and models used](#ai-providers-and-models-used) for exactly what is live vs. wired-but-not-in-the-deployed-path.)
+
+## Live demo
+
+- **App**: https://brandforge-ohce.onrender.com — server-rendered gallery + JSON API.
+- **Auth**: every route except `/healthz` needs HTTP Basic. Test account username is `curator`; the password is shared privately with judges via the Devpost submission form (never committed to this repo).
+- **Repo**: https://github.com/aomizuki0307/brandforge (public).
+- Free-tier Render sleeps when idle, so the first request after a while takes a **cold start (~30–60s)** — give it a moment, then reload.
+
+> Presigned URLs in the gallery are short-lived, signed read links to private B2 objects. Don't paste them anywhere public or record them on screen.
 
 ## Why Genblaze + B2
 
-- **Genblaze**: one fluent `Pipeline` orchestrates multi-step generation (image → short video), swaps providers with a one-line change (GMI Cloud primary, OpenAI fallback), and emits a verifiable provenance manifest per run.
-- **Backblaze B2**: durable, versioned home for every generated asset, its manifest, and a Parquet asset index — addressed with a hierarchical key strategy and exposed via public delivery URLs.
+- **Genblaze**: one fluent `Pipeline` orchestrates multi-step generation and brand injection, abstracts the provider behind a one-line change (OpenAI live today; GMI Cloud wired for images + short video, pending free credits), and emits a verifiable **provenance manifest** per run (`manifest.verify()` re-hashes every asset).
+- **Backblaze B2**: durable, versioned home for every generated asset, its manifest, and a Parquet asset index — addressed with a hierarchical key strategy (`runs/<date>/<run>/…`, `brandkits/<id>/vN.json`, `index/assets.parquet`) and delivered via presigned URLs. Not just a bucket: Brand Kit versioning, manifest-beside-assets provenance, and a queryable catalog make B2 the system of record.
+
+See [`docs/architecture.md`](docs/architecture.md) for the full data-flow diagram and how each piece maps to the judging axes.
 
 ## Status
 
-🚧 In progress. Working: Phase 1 (single image → B2 → verified manifest),
-Phase 2 (multi-variant on-brand image **set**, one manifest per campaign),
-Phase 4 (single **Parquet asset catalog** in B2, auto-updated per campaign and
-queryable for the gallery), and Phase 6 (**FastAPI + web gallery**, HTTP Basic
-auth, Docker/Render deploy artifacts). Next up: the short-video chain and
-per-platform captions. See the implementation plan for phases and scope.
+**Submission-ready** for the Backblaze Generative Media Hackathon. Live and tested:
+
+- **Phase 1** — single image → B2 → **verified** SHA-256 manifest.
+- **Phase 2** — multi-variant on-brand image **set**, one manifest per campaign.
+- **Phase 4** — single **Parquet asset catalog** in B2, auto-updated per campaign and queryable for the gallery.
+- **Phase 6** — **FastAPI + web gallery** with replay, HTTP Basic auth (fail-closed), security headers, rate limiting, and Docker/Render deploy — **deployed** (URL above).
+
+Quality gates: **83 tests green**, coverage ~97%, `ruff` clean.
+
+Built into the codebase but **not in the deployed demo path** (disclosed for honesty, see below): the **short-video chain** (Phase 3, activates with `prefer="gmicloud"` once GMI credits land) and **per-platform captions** (`app/captions.py`, fully guarded, not yet wired into the campaign/web flow).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    U([Curator]) -->|Basic auth| API[FastAPI<br/>create_app]
+    API -->|POST /campaigns| SVC[run_campaign]
+    SVC --> G[guard.check_prompt]
+    G --> BR[compose_image_prompt<br/>brand injection]
+    BR --> PL[Genblaze Pipeline<br/>N steps · provider abstraction]
+    PL -->|prefer=openai LIVE| OAI[OpenAI gpt-image-1]
+    PL -.->|prefer=gmicloud pending| GMI[GMI Cloud]
+    PL --> AS[assets + SHA-256 manifest]
+    AS --> B2[(Backblaze B2)]
+    B2 --- K1[runs/&lt;date&gt;/&lt;run&gt;/assets + manifest.json]
+    B2 --- K2[brandkits/&lt;id&gt;/vN.json]
+    SVC --> IDX[index/assets.parquet<br/>read-modify-write · id dedup]
+    IDX --> B2
+    API -->|GET / · GET /assets| Q[query_assets<br/>refresh presigned URLs]
+    Q --> IDX
+    Q --> GAL[Web gallery + replay ?campaign_id=]
+    GAL --> U
+```
+
+Full narrative and judging-axis mapping: [`docs/architecture.md`](docs/architecture.md).
 
 ## Setup
 
@@ -31,10 +71,11 @@ cp .env.example .env   # then fill in B2 + provider keys
 
 | Service | Purpose | Notes |
 |---|---|---|
-| Backblaze B2 | Asset storage | Free tier 10GB. Create an Application Key. |
-| GMI Cloud | Primary generative provider | Free credits for the first 270 participants (request form). |
-| OpenAI | Fallback image provider | Optional; pay-as-you-go. |
-| Anthropic | Caption generation | Optional. |
+| Backblaze B2 | Asset storage (required) | Free tier 10GB. Create an Application Key. |
+| OpenAI | Image generation (`gpt-image-1`) + captions (`gpt-5-mini`) | The provider the deployed app runs on. Pay-as-you-go. |
+| GMI Cloud | Image + short-video provider (optional) | Wired via `prefer="gmicloud"`; pending free credits, so not active in the deployed demo. |
+
+> At least one generative provider (`OPENAI_API_KEY` or `GMICLOUD_API_KEY`) is required; the app fails fast at startup otherwise.
 
 ## Generate a campaign
 
@@ -129,16 +170,24 @@ pytest --cov=app --cov-report=term-missing
 
 ## AI providers and models used
 
-_(Disclosure required by the hackathon — kept current as providers are wired in.)_
+_(Disclosure required by the hackathon. This reflects what the **deployed app actually runs**, not aspirations.)_
 
-- **GMI Cloud** — image and short-video models (primary).
-- **OpenAI** — image model (fallback).
-- **Anthropic** — caption generation.
+| Model | Provider | Role | Status in deployed app |
+|---|---|---|---|
+| `gpt-image-1` | OpenAI | Image generation | ✅ **Live** — the provider the deployed demo runs on. |
+| `gpt-5-mini` | OpenAI | Per-platform captions (`app/captions.py`, safety-guarded) | ⚠️ Implemented + tested, **not wired** into the deployed campaign/web path. Configurable via `OPENAI_CAPTION_MODEL`. |
+| `seedream-4-0` (image) / video model | GMI Cloud | Image + short-video generation | ⚠️ **Wired** behind `prefer="gmicloud"`, **pending free credits** — not active in the deployed demo. Model ids to be confirmed against the live GMI catalog on activation. |
+
+No other model providers are used. Anthropic is **not** used for generation in this app (an earlier draft of this README listed it in error; captions run on OpenAI as shown above).
+
+## License
+
+Released under the [MIT License](LICENSE).
 
 ## Submission checklist
 
-- [ ] Working app URL (deployed; test account if auth)
-- [ ] Public GitHub repo with setup instructions
-- [ ] Description of B2 + Genblaze usage
-- [ ] List of AI providers/models used
-- [ ] Demo video (< 3 min, public)
+- [x] **Working app URL** (deployed, test account): https://brandforge-ohce.onrender.com (user `curator`; password shared via Devpost private field)
+- [x] **Public GitHub repo** with setup instructions: https://github.com/aomizuki0307/brandforge
+- [x] **Description of B2 + Genblaze usage**: [Why Genblaze + B2](#why-genblaze--b2) + [`docs/architecture.md`](docs/architecture.md)
+- [x] **List of AI providers/models used**: [AI providers and models used](#ai-providers-and-models-used)
+- [ ] **Demo video** (< 3 min, public): _add YouTube URL here after upload_ — script/storyboard in [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)
