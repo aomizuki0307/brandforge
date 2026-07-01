@@ -2,6 +2,11 @@
 *.env
 *.env.*
 !.env.example
+# Local credential / secret notes (e.g. saved deploy logins) — never commit
+docs/pass.txt
+*secret*.txt
+*password*.txt
+*credentials*.txt
 
 # Python
 __pycache__/

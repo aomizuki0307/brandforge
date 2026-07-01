@@ -331,6 +331,32 @@ def test_pipeline_error_maps_to_502(monkeypatch):
 
 
 @pytest.mark.unit
+def test_backend_build_failure_returns_json_500_with_headers_and_retries(monkeypatch):
+    calls = {"n": 0}
+
+    def _boom(_settings):
+        calls["n"] += 1
+        raise RuntimeError("b2 preflight failed")
+
+    monkeypatch.setattr(main_mod, "make_backend", _boom)
+    settings = _settings()
+    app = create_app(settings=settings)
+    # Only settings is overridden; get_backend runs for real and its make_backend raises.
+    app.dependency_overrides[get_settings] = lambda: settings
+    client = TestClient(app)
+
+    res = client.get("/assets", auth=AUTH)
+    # The middleware converts the unhandled error to the API's JSON shape and
+    # still attaches the security headers (no bare headerless text/plain 500).
+    assert res.status_code == 500
+    assert res.json() == {"detail": "Internal error."}
+    assert res.headers.get("X-Frame-Options") == "DENY"
+    # app.state.backend was never set, so a later request retries cleanly.
+    client.get("/assets", auth=AUTH)
+    assert calls["n"] == 2
+
+
+@pytest.mark.unit
 def test_get_backend_builds_once_and_caches(monkeypatch):
     backend = FakeBackend()
     calls = {"n": 0}
@@ -369,3 +395,24 @@ def test_openapi_and_docs_are_disabled():
     assert client.get("/openapi.json").status_code == 404
     assert client.get("/docs").status_code == 404
     assert client.get("/redoc").status_code == 404
+
+
+@pytest.mark.unit
+def test_rate_limit_throttles_and_returns_json_429_with_headers():
+    # /brandkits is limited to 30/hour per client; the 31st is throttled.
+    settings = _settings()
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_backend] = lambda: FakeBackend()
+    client = TestClient(app)
+    # Each app gets its own limiter/storage, so this test's counter starts clean.
+    statuses = [
+        client.post("/brandkits", json=_brand(), auth=AUTH).status_code for _ in range(31)
+    ]
+    assert statuses[:30] == [201] * 30  # under the 30/hour limit
+    assert statuses[30] == 429  # the 31st is throttled
+    last = client.post("/brandkits", json=_brand(), auth=AUTH)
+    assert last.status_code == 429
+    assert last.json()["detail"].startswith("Rate limit exceeded")
+    # Even a throttled response carries the locked-down security headers.
+    assert last.headers.get("X-Frame-Options") == "DENY"

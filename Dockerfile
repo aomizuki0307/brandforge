@@ -27,4 +27,7 @@ EXPOSE 8000
 
 # Render (and most PaaS) inject $PORT; default to 8000 locally. Use the app
 # factory so import has no side effects until the server builds the app.
-CMD ["sh", "-c", "uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
+# --proxy-headers + --forwarded-allow-ips='*' make uvicorn trust Render's edge
+# X-Forwarded-For, so per-client rate limiting keys on the real visitor IP
+# rather than lumping every request under Render's internal proxy address.
+CMD ["sh", "-c", "uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]

@@ -26,6 +26,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from genblaze_s3 import S3StorageBackend
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app.campaign import run_campaign
 from app.config import Settings, load_settings
@@ -35,6 +38,17 @@ from app.pipeline import PipelineError
 from app.schemas import AssetOut, BrandKitOut, CampaignOut, CampaignRequest
 from app.security import make_auth_dependency
 from app.storage import brand_kit_key, make_backend, save_brand_kit
+
+# Per-client rate limits. The public free-tier deploy has no upstream WAF, so a
+# leaked/guessed credential could otherwise loop the billable generation route
+# unbounded; these bound the blast radius. Keyed by client IP (see the
+# ``--proxy-headers`` note in the Dockerfile so the real visitor IP is used, not
+# Render's edge proxy). /healthz is intentionally unlimited so the health probe
+# is never throttled. The Limiter is built per-app in create_app() so each app
+# instance (notably each test) gets isolated counters.
+_LIMIT_CAMPAIGNS = "10/hour"   # billable (OpenAI gpt-image-1) — strictest
+_LIMIT_BRANDKITS = "30/hour"
+_LIMIT_READS = "60/minute"
 
 # Locked-down response headers applied to every response (see create_app).
 # Basic-auth credentials are cached per-origin by browsers, so a state-changing
@@ -97,6 +111,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.backend = None  # built lazily on first request (see get_backend)
+    limiter = Limiter(key_func=get_remote_address)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _on_rate_limited)
 
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
     if _STATIC_DIR.is_dir():
@@ -106,13 +123,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def _apply_security_headers(request: Request, call_next) -> Response:
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            # An unhandled downstream error (e.g. a B2 StorageError from the lazy
+            # backend build on cold start) would otherwise escape past this
+            # middleware to Starlette's ServerErrorMiddleware and return a bare,
+            # headerless text/plain 500. Convert it to the API's JSON error shape
+            # and still attach the locked-down headers. Full detail is logged
+            # server-side; the client message stays bounded (no secrets/locators).
+            logger.exception("unhandled request error")
+            response = JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"detail": "Internal error."},
+            )
         response.headers.update(_SECURITY_HEADERS)
         return response
 
     _register_exception_handlers(app)
-    _register_routes(app, templates, auth)
+    _register_routes(app, templates, auth, limiter)
     return app
+
+
+def _on_rate_limited(_request: Request, _exc: RateLimitExceeded) -> JSONResponse:
+    """Return the API's bounded JSON shape for a throttled request (429)."""
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"detail": "Rate limit exceeded. Please slow down and try again later."},
+    )
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
@@ -128,7 +166,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
 
 def _register_routes(
-    app: FastAPI, templates: Jinja2Templates, auth: Callable[..., None]
+    app: FastAPI, templates: Jinja2Templates, auth: Callable[..., None], limiter: Limiter
 ) -> None:
     @app.get("/healthz")
     def healthz(settings: Settings = Depends(get_settings)) -> dict:
@@ -144,7 +182,9 @@ def _register_routes(
         }
 
     @app.post("/brandkits", response_model=BrandKitOut, status_code=status.HTTP_201_CREATED)
+    @limiter.limit(_LIMIT_BRANDKITS)
     def create_brandkit(
+        request: Request,
         brand: BrandKit,
         _: None = Depends(auth),
         settings: Settings = Depends(get_settings),
@@ -155,7 +195,9 @@ def _register_routes(
         return BrandKitOut(brand_kit_key=brand_kit_key(brand), url=url)
 
     @app.post("/campaigns", response_model=CampaignOut)
+    @limiter.limit(_LIMIT_CAMPAIGNS)
     def create_campaign(
+        request: Request,
         body: CampaignRequest,
         _: None = Depends(auth),
         settings: Settings = Depends(get_settings),
@@ -180,7 +222,9 @@ def _register_routes(
         )
 
     @app.get("/assets", response_model=list[AssetOut])
+    @limiter.limit(_LIMIT_READS)
     def list_assets(
+        request: Request,
         _: None = Depends(auth),
         settings: Settings = Depends(get_settings),
         backend: S3StorageBackend = Depends(get_backend),
@@ -199,6 +243,7 @@ def _register_routes(
         return [AssetOut.from_asset(a) for a in assets]
 
     @app.get("/")
+    @limiter.limit(_LIMIT_READS)
     def gallery(
         request: Request,
         _: None = Depends(auth),
@@ -206,7 +251,7 @@ def _register_routes(
         backend: S3StorageBackend = Depends(get_backend),
         brand_kit_id: str | None = None,
         campaign_id: str | None = None,
-    ):
+    ) -> Response:
         """Server-render the gallery. Passing ``campaign_id`` replays a past
         campaign's set with freshly signed URLs."""
         assets = query_assets(
