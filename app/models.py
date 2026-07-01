@@ -13,12 +13,18 @@ from pydantic import BaseModel, Field
 Modality = Literal["image", "video", "audio"]
 Platform = Literal["x", "instagram", "threads", "linkedin"]
 
+# Identifiers are interpolated raw into B2 object keys (brandkits/<id>/..., the
+# pipeline name) and must stay path-safe, so restrict them to a conservative
+# slug charset — no "/" or other separators that could collide key namespaces.
+ID_PATTERN = r"^[A-Za-z0-9_-]+$"
+ID_MAX_LENGTH = 64
+
 
 class BrandKit(BaseModel):
     """A brand's visual + voice identity. Versioned so assets can record which
     revision produced them (stored in B2 under brandkits/<id>/v<version>)."""
 
-    id: str = Field(..., min_length=1)
+    id: str = Field(..., min_length=1, max_length=ID_MAX_LENGTH, pattern=ID_PATTERN)
     name: str = Field(..., min_length=1)
     version: int = Field(default=1, ge=1)
     palette: list[str] = Field(default_factory=list, description="Hex colors, e.g. #1a1a1a")
@@ -33,9 +39,9 @@ class BrandKit(BaseModel):
 class Campaign(BaseModel):
     """A single generation request for one brand + theme."""
 
-    id: str = Field(..., min_length=1)
-    brand_kit_id: str = Field(..., min_length=1)
-    theme: str = Field(..., min_length=1, description="What the campaign is about")
+    id: str = Field(..., min_length=1, max_length=ID_MAX_LENGTH, pattern=ID_PATTERN)
+    brand_kit_id: str = Field(..., min_length=1, max_length=ID_MAX_LENGTH, pattern=ID_PATTERN)
+    theme: str = Field(..., min_length=1, max_length=500, description="What the campaign is about")
     num_variants: int = Field(default=3, ge=1, le=8)
     want_video: bool = False
 

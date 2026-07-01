@@ -11,7 +11,11 @@ Define a **Brand Kit** once (palette, tone, style prompt fragments, target platf
 
 ## Status
 
-🚧 Early scaffold (Phase 0). See the implementation plan for phases and scope.
+🚧 In progress. Working: Phase 1 (single image → B2 → verified manifest),
+Phase 2 (multi-variant on-brand image **set**, one manifest per campaign), and
+Phase 4 (single **Parquet asset catalog** in B2, auto-updated per campaign and
+queryable for the gallery). Next up: the FastAPI + web gallery layer and the
+short-video chain. See the implementation plan for phases and scope.
 
 ## Setup
 
@@ -30,6 +34,51 @@ cp .env.example .env   # then fill in B2 + provider keys
 | GMI Cloud | Primary generative provider | Free credits for the first 270 participants (request form). |
 | OpenAI | Fallback image provider | Optional; pay-as-you-go. |
 | Anthropic | Caption generation | Optional. |
+
+## Generate a campaign
+
+`run_campaign` is the single entry point: it saves the Brand Kit revision, runs
+one Genblaze `Pipeline` of `num_variants` on-brand steps, and returns the whole
+image **set** under one provenance manifest.
+
+```python
+from app.campaign import run_campaign
+from app.config import load_settings
+from app.models import BrandKit, Campaign
+
+settings = load_settings()
+brand = BrandKit(id="acme", name="Acme", tone_words=["clean", "bold"],
+                 style_prompt="flat vector, soft gradients")
+campaign = Campaign(id="launch-1", brand_kit_id="acme",
+                    theme="summer product launch", num_variants=3)
+
+result = run_campaign(settings, brand, campaign)   # OpenAI-first; prefer="gmicloud" once credits land
+# result.brand_kit_url, result.assets (all share result.manifest), result.run
+```
+
+Each run also folds its assets into a single **Parquet catalog** in B2
+(`index/assets.parquet`, de-duped by asset id) — the data source for the gallery.
+Query it back with fresh (re-signed) delivery URLs:
+
+```python
+from app.index import query_assets
+
+assets = query_assets(settings, brand_kit_id="acme")          # newest first
+assets = query_assets(settings, campaign_id="launch-1")        # one campaign
+assets = query_assets(settings, modality="image")              # filter by kind
+```
+
+Pass `update_index=False` to `run_campaign` to skip the catalog write.
+
+### Smoke tests (live B2 + OpenAI, billable — not in the pytest suite)
+
+```bash
+.\.venv\Scripts\python examples\smoke_b2_pipeline.py    # Phase 1: 1 image
+.\.venv\Scripts\python examples\smoke_variant_set.py    # Phase 2: 3-variant set, one manifest
+```
+
+> The printed URLs are short-lived presigned links that grant read access to the
+> object — don't record them in the demo video or paste them anywhere public.
 
 ## Test
 
