@@ -1,0 +1,57 @@
+/* Shared styling for BrandForge demo cards. 1920x1080, dark technical aesthetic
+   matching the rendered architecture diagram (bg #0d1117). Self-contained: no web fonts. */
+:root {
+  --bg: #0d1117;
+  --bg-2: #111827;
+  --ink: #e6edf3;
+  --muted: #8b949e;
+  --accent: #f0883e;   /* B2 / Backblaze-adjacent warm accent */
+  --accent-2: #58a6ff; /* link/URL blue */
+  --line: #30363d;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 1920px; height: 1080px; overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.stage {
+  position: relative; width: 100%; height: 100%;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 0 160px;
+  background:
+    radial-gradient(1200px 800px at 82% 18%, rgba(240,136,62,0.10), transparent 60%),
+    radial-gradient(1000px 700px at 12% 90%, rgba(88,166,255,0.08), transparent 60%),
+    linear-gradient(180deg, var(--bg), var(--bg-2));
+}
+/* faint grid texture, not a flat panel */
+.stage::before {
+  content: ""; position: absolute; inset: 0; opacity: 0.35;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 55%, transparent 85%);
+          mask-image: radial-gradient(circle at 50% 50%, #000 55%, transparent 85%);
+}
+.stage > * { position: relative; z-index: 1; }
+.kicker {
+  font-size: 26px; letter-spacing: 0.32em; text-transform: uppercase;
+  color: var(--accent); font-weight: 600; margin-bottom: 28px;
+}
+.title { font-size: 128px; font-weight: 800; line-height: 0.98; letter-spacing: -0.02em; }
+.title .dot { color: var(--accent); }
+.tagline { font-size: 44px; color: var(--ink); font-weight: 400; margin-top: 36px; max-width: 1320px; line-height: 1.3; }
+.tagline b { font-weight: 700; }
+.footline { margin-top: 56px; font-size: 30px; color: var(--muted); letter-spacing: 0.04em; }
+.footline .sep { color: var(--accent); margin: 0 18px; }
+.url { color: var(--accent-2); font-family: "Cascadia Code", Consolas, monospace; }
+ul.bullets { list-style: none; margin-top: 40px; display: grid; gap: 26px; max-width: 1560px; }
+ul.bullets li { font-size: 40px; line-height: 1.28; position: relative; padding-left: 52px; }
+ul.bullets li::before {
+  content: "▸"; color: var(--accent); font-size: 34px;
+  position: absolute; left: 0; top: 2px;
+}
+ul.bullets .num { color: var(--accent); font-weight: 700; }

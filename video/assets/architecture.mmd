@@ -1,0 +1,53 @@
+flowchart TD
+    subgraph Client
+        U([Curator / judge])
+    end
+
+    subgraph Web["FastAPI (app/main.py · create_app)"]
+        AUTH[HTTP Basic<br/>fail-closed 503 · security headers · rate limit]
+        RC[POST /campaigns]
+        RA[GET /assets]
+        RG[GET / gallery + replay]
+        HZ[GET /healthz · no auth]
+    end
+
+    subgraph Service["Service layer (pure, backend-injectable)"]
+        CAMP[campaign.run_campaign]
+        GRD[guard.check_prompt]
+        PROMPT[brandkit.compose_image_prompt<br/>brand injection]
+        PIPE[pipeline.build_image_pipeline<br/>Genblaze Pipeline · N steps]
+        PICK[pipeline.pick_image_provider<br/>prefer=openai → gmicloud]
+        IDXW[index.index_assets<br/>read-modify-write · id dedup]
+        QRY[index.query_assets<br/>refresh presigned URLs]
+        SBK[storage.save_brand_kit<br/>versioned vN.json]
+    end
+
+    subgraph Providers
+        OAI[OpenAI gpt-image-1 · LIVE]
+        GMI[GMI Cloud seedream / video · pending credits]
+    end
+
+    subgraph B2["Backblaze B2 (private bucket)"]
+        A1[runs/&lt;date&gt;/&lt;run&gt;/assets/*]
+        A2[runs/&lt;date&gt;/&lt;run&gt;/manifest.json<br/>SHA-256 · manifest.verify]
+        A3[brandkits/&lt;id&gt;/vN.json]
+        A4[index/assets.parquet]
+    end
+
+    U -->|login| AUTH
+    AUTH --> RC & RA & RG
+    RC --> CAMP
+    CAMP --> SBK --> A3
+    CAMP --> GRD --> PROMPT --> PIPE
+    PIPE --> PICK
+    PICK -->|LIVE| OAI
+    PICK -.->|pending| GMI
+    OAI --> PIPE
+    PIPE -->|assets + manifest| A1 & A2
+    CAMP --> IDXW --> A4
+    RA --> QRY
+    RG --> QRY
+    QRY --> A4
+    QRY -->|presign| A1
+    QRY --> RG
+    RG --> U

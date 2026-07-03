@@ -1,0 +1,10 @@
+# Generated / heavy artifacts — all reproducible from source (scenes.yaml + scripts).
+build/
+final.mp4
+raw_shots/
+narration/
+# rendered stills (regenerate: render_cards.mjs / mermaid-cli)
+cards/*.png
+assets/*.png
+# keep: scenes.yaml, scripts/, cards/*.html, cards/_card.css,
+#       assets/*.mmd, assets/mermaid-config.json, subtitles/*.srt

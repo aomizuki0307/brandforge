@@ -1,0 +1,59 @@
+1
+00:00:00,000 --> 00:00:18,000
+Small brands need a consistent look across
+every post. BrandForge turns one Brand Kit
+into a coordinated, provenance-tracked
+image set, built on Genblaze and Backblaze
+B2.
+
+2
+00:00:18,000 --> 00:00:40,000
+Define a Brand Kit once. One Genblaze
+Pipeline generates every variant under a
+single SHA-256 manifest, and B2 stores the
+assets, the manifest, versioned Brand
+Kits, and a Parquet catalog.
+
+3
+00:00:40,000 --> 00:00:55,000
+This is live on Render. Every route but
+the health check is behind HTTP Basic auth
+that fails closed. Anonymous callers never
+see a presigned URL.
+
+4
+00:00:55,000 --> 00:01:25,000
+Here's one campaign: a set of on-brand
+images that share the palette and style
+from the Brand Kit. Each card carries its
+content hash. Provenance, not just pixels.
+
+5
+00:01:25,000 --> 00:01:55,000
+Replay: I ask for a past campaign by id,
+and BrandForge re-queries the Parquet
+catalog and re-signs fresh delivery URLs
+from B2. The set is reproducible on
+demand.
+
+6
+00:01:55,000 --> 00:02:20,000
+On the B2 side: assets under a
+hierarchical key strategy, a manifest
+beside them, versioned Brand Kits, and one
+Parquet index. manifest dot verify re-
+hashes every asset. Tamper-evident.
+
+7
+00:02:20,000 --> 00:02:38,000
+It runs on OpenAI's gpt-image-1 today; the
+GMI Cloud path and short-video chain are
+wired for when credits land. Rate-limited,
+security-headered, eighty-three tests,
+about ninety-seven percent coverage.
+
+8
+00:02:38,000 --> 00:02:50,000
+Brand-consistent media, with provenance,
+on Genblaze and B2. Repo and live demo are
+in the description. Thanks for watching.

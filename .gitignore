@@ -38,3 +38,8 @@ manifests/
 Thumbs.db
 .vscode/
 .idea/
+
+# Playwright auth/session state — bearer-equivalent cookies, never commit
+# (record_b2.mjs defaults to C:\tmp outside the repo, but guard against overrides)
+b2_state*.json
+*storageState*.json

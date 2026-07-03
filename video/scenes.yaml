@@ -1,0 +1,130 @@
+# BrandForge demo — scene manifest (single source of truth)
+# Authored from docs/DEMO_SCRIPT.md. Validate with: python video/scripts/build_scenes.py
+#
+# visual kinds:
+#   card    -> a still image in video/cards or video/assets (title/outro/diagram/slide)
+#   diagram -> the rendered Mermaid PNG (video/assets/architecture.png)
+#   screen  -> a screen-capture clip in video/raw_shots (OBS or Playwright).
+#              If the clip is missing, assemble.py substitutes a labeled placeholder
+#              so an end-to-end draft still renders before capture is done.
+#
+# safety: free-text flags carried into assembly. `blur_top_bar` boxblurs the top strip
+#         (address bar) so presigned ?X-Amz-... query strings never appear on screen.
+
+video:
+  target_duration_sec: 170     # 2:50, safely under the 3:00 cap
+  resolution: "1920x1080"
+  fps: 30
+  language: en
+  subtitles: [en, ja]
+  voice: en-US-AndrewNeural    # edge-tts; warm/confident, good for product VO
+  xfade_sec: 0.0               # 0 = clean concat; per-clip fade in/out handled in assemble.py
+
+scenes:
+  - id: "01-title"
+    start: 0
+    duration: 18
+    visual: card
+    source: cards/title.png
+    narration: >-
+      Small brands need a consistent look across every post. BrandForge turns one Brand Kit
+      into a coordinated, provenance-tracked image set, built on Genblaze and Backblaze B2.
+    subtitle_ja: "一貫したブランド画像を一括生成"
+    safety: []
+
+  - id: "02-architecture"
+    start: 18
+    duration: 22
+    visual: diagram
+    source: assets/architecture.png
+    action: "Trace: Brand Kit -> Pipeline -> B2 -> Parquet -> gallery"
+    narration: >-
+      Define a Brand Kit once. One Genblaze Pipeline generates every variant under a single
+      SHA-256 manifest, and B2 stores the assets, the manifest, versioned Brand Kits,
+      and a Parquet catalog.
+    subtitle_ja: "Brand Kit→Pipeline→B2→索引→ギャラリー"
+    safety: []
+
+  - id: "03-live-gallery"
+    start: 40
+    duration: 15
+    visual: screen
+    source: raw_shots/03-live-gallery.mp4
+    action: "Browser already on the live gallery; point out the live Render URL + auth note"
+    narration: >-
+      This is live on Render. Every route but the health check is behind HTTP Basic auth
+      that fails closed. Anonymous callers never see a presigned URL.
+    subtitle_ja: "本番稼働・認証はfail-closed"
+    # Playwright recordVideo captures the page viewport only (no browser chrome / address bar),
+    # so blur_top_bar is dropped here — it would otherwise blur the BrandForge wordmark. Auth is
+    # passed via httpCredentials, so no login dialog is ever on camera.
+    safety: ["playwright_viewport_capture", "no address bar on camera; auth via httpCredentials"]
+
+  - id: "04-campaign-set"
+    start: 55
+    duration: 30
+    visual: screen
+    source: raw_shots/04-campaign-set.mp4
+    action: "Scroll one campaign's set; show same look across cards, SHA-256 badge, modality/date"
+    narration: >-
+      Here's one campaign: a set of on-brand images that share the palette and style from the
+      Brand Kit. Each card carries its content hash. Provenance, not just pixels.
+    subtitle_ja: "同一トーンの画像セット＋SHA-256"
+    # Playwright viewport capture: no address bar. Presigned delivery URLs are <img src> attributes,
+    # never rendered as visible text, so nothing sensitive is on screen.
+    safety: ["playwright_viewport_capture", "presigned URLs are img attrs, not visible text"]
+
+  - id: "05-replay"
+    start: 85
+    duration: 30
+    visual: screen
+    source: raw_shots/05-replay.mp4
+    action: "Change URL to ?campaign_id=<id>; reload -> same set returns with fresh URLs"
+    narration: >-
+      Replay: I ask for a past campaign by id, and BrandForge re-queries the Parquet catalog
+      and re-signs fresh delivery URLs from B2. The set is reproducible on demand.
+    subtitle_ja: "replayで過去セットを再署名URLで再現"
+    # Playwright viewport capture: no address bar. Only the campaign_id appears in on-page nav
+    # links; the X-Amz signature lives in <img src> attributes, never shown as text.
+    safety: ["playwright_viewport_capture", "only campaign_id in nav; no X-Amz signature shown"]
+
+  - id: "06-b2-console"
+    start: 115
+    duration: 25
+    visual: screen
+    source: raw_shots/06-b2-console.mp4
+    # seek past the top-level lead-in so the 25s window lands on the file-tree tour and
+    # ENDS on the fully-loaded assets/ view (raw ~24-32s) instead of the brief "Loading
+    # page contents" frame at the drill-in (~23s). Avoids the second nav blank at ~33s.
+    trim_start: 2
+    action: "B2 tab at runs/<date>/<run>/ : assets/, manifest.json, index/assets.parquet"
+    narration: >-
+      On the B2 side: assets under a hierarchical key strategy, a manifest beside them,
+      versioned Brand Kits, and one Parquet index. manifest dot verify re-hashes every asset.
+      Tamper-evident.
+    subtitle_ja: "B2に資産・manifest・Parquet索引"
+    safety: ["blur_top_bar", "do not show B2 application keys or account id (often in the URL)"]
+
+  - id: "07-prod-readiness"
+    start: 140
+    duration: 18
+    visual: card
+    source: cards/prod.png
+    action: "Static slide: model disclosure + prod-readiness bullets (no capture needed)"
+    narration: >-
+      It runs on OpenAI's gpt-image-1 today; the GMI Cloud path and short-video chain are wired
+      for when credits land. Rate-limited, security-headered, eighty-three tests, about
+      ninety-seven percent coverage.
+    subtitle_ja: "使用モデル開示＋本番品質"
+    safety: []
+
+  - id: "08-outro"
+    start: 158
+    duration: 12
+    visual: card
+    source: cards/outro.png
+    narration: >-
+      Brand-consistent media, with provenance, on Genblaze and B2. Repo and live demo are in
+      the description. Thanks for watching.
+    subtitle_ja: "リポジトリ・URLは概要欄"
+    safety: []
