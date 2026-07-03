@@ -190,4 +190,4 @@ Released under the [MIT License](LICENSE).
 - [x] **Public GitHub repo** with setup instructions: https://github.com/aomizuki0307/brandforge
 - [x] **Description of B2 + Genblaze usage**: [Why Genblaze + B2](#why-genblaze--b2) + [`docs/architecture.md`](docs/architecture.md)
 - [x] **List of AI providers/models used**: [AI providers and models used](#ai-providers-and-models-used)
-- [ ] **Demo video** (< 3 min, public): _add YouTube URL here after upload_ — script/storyboard in [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)
+- [x] **Demo video** (< 3 min, public): https://youtu.be/7ox-9S-D9-Y — script/storyboard in [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)
